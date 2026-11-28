@@ -914,27 +914,28 @@ var parts=[];
 var concl=conclusionText();
 var html='<div style="border:2px solid #0d5c50;border-radius:14px;padding:16px 18px;margin:14px 0;background:#f4faf8">'
 +'<h3 style="margin:0 0 8px">工具自己的分析（不用问 AI，打开就有）</h3>'
++'<p style="margin:4px 0 8px;color:#33524b">先把最底层的道理说清：<b>投放就是拿钱换客户。</b>所以先看每个渠道换一个客户要多少钱，再看花的钱和换回的成果对不对得上。下面每条判断都从这一句话来，每条后面都写了为什么这么判。</p>'
 +(concl?'<p style="font-size:16.5px;margin:6px 0"><b>一句话：</b>'+esc(concl)+'</p>':"");
 if(withCac.length>=2&&m.cac!=null){
  var worst=withCac.reduce(function(a,b){return a.cac>b.cac?a:b});
  var best=withCac.reduce(function(a,b){return a.cac<b.cac?a:b});
- if(worst.channel!==best.channel)parts.push('拉一个客户最贵的是 <b>'+esc(worst.channel)+'</b>，要 '+fmtMoney(worst.cac)+'，是全渠道 '+fmtMoney(m.cac)+' 的 '+(worst.cac/m.cac).toFixed(2)+' 倍；最便宜的是 <b>'+esc(best.channel)+'</b>，只要 '+fmtMoney(best.cac)+'。同样拉一个客户，两个渠道的价钱差了 '+(worst.cac/best.cac).toFixed(1)+' 倍。');
+ if(worst.channel!==best.channel)parts.push({t:'拉一个客户最贵的是 <b>'+esc(worst.channel)+'</b>，要 '+fmtMoney(worst.cac)+'，是全渠道 '+fmtMoney(m.cac)+' 的 '+(worst.cac/m.cac).toFixed(2)+' 倍；最便宜的是 <b>'+esc(best.channel)+'</b>，只要 '+fmtMoney(best.cac)+'。同样拉一个客户，两个渠道的价钱差了 '+(worst.cac/best.cac).toFixed(1)+' 倍。',w:'获客成本就是一个客户的单价。单看一个数不知道贵还是便宜，跟这批数据自己的平均单价一比，贵了几倍立刻就清楚，不用找外面的标准。'});
 }
 if(m.cac!=null){
  var extra=0, extraNames=[];
  withCac.forEach(function(c){ if(c.cac>m.cac){ var e=c.cost-c.conv*m.cac; if(e>0){extra+=e; extraNames.push(c.channel);} } });
- if(extra>0)parts.push('按全渠道平均的获客成本折算，'+extraNames.map(function(n){return esc(n)}).join('、')+' 一共多花了约 <b>'+fmtMoney(extra)+'</b>。这是拿平均数折算的估算，帮你看先处理谁最值，不是省钱承诺。');
+ if(extra>0)parts.push({t:'按全渠道平均的获客成本折算，'+extraNames.map(function(n){return esc(n)}).join('、')+' 一共多花了约 <b>'+fmtMoney(extra)+'</b>。',w:'这是个假设折算：假装它们也按平均单价拉客户，本该花多少、实际多花了多少，一减就出来了。现实里一动预算，客户数也会跟着变，所以这个数只用来排先处理谁，不能当省钱的承诺。'});
 }
 var div=rows.filter(function(r){return r.divergent});
-if(div.length){ div.forEach(function(r){ parts.push('<b>'+esc(r.channel)+'</b> 的钱和效果对不上：占了全部花费的 '+r.costShare.toFixed(1)+'%，只换来全部转化的 '+r.convShare.toFixed(1)+'%，差了 '+r.gap.toFixed(1)+' 个百分点。'); }); }
-else if(rows.length)parts.push('各渠道的花费占比和转化占比大体对得上，没有哪个渠道明显花得多、换得少。');
+if(div.length){ div.forEach(function(r){ parts.push({t:'<b>'+esc(r.channel)+'</b> 的钱和效果对不上：占了全部花费的 '+r.costShare.toFixed(1)+'%，只换来全部转化的 '+r.convShare.toFixed(1)+'%，差了 '+r.gap.toFixed(1)+' 个百分点。',w:'钱的去向应该和成果的来向对得上：拿走多少比例的钱，就该交回差不多比例的客户。拿的比交的多，差出来的这部分就是花得不值的。单价查不出这个问题，占的预算和出的活不成比例，单价看着正常也能亏。'}); }); }
+else if(rows.length)parts.push({t:'各渠道的花费占比和转化占比大体对得上，没有哪个渠道明显花得多、换得少。',w:'每个渠道拿走的钱的比例和交回的客户的比例大体一致，说明钱的分配和产出是匹配的。'});
 var withCtr=elig.filter(function(c){return c.ctr!=null});
-if(withCtr.length&&m.ctr!=null){ var lc=withCtr.reduce(function(a,b){return a.ctr<b.ctr?a:b}); if(lc.ctr<m.ctr)parts.push('点击率最低的是 <b>'+esc(lc.channel)+'</b>，只有 '+pct(lc.ctr)+'，全渠道是 '+pct(m.ctr)+'——看到的人多、点的人少，问题多半在封面和标题。'); }
+if(withCtr.length&&m.ctr!=null){ var lc=withCtr.reduce(function(a,b){return a.ctr<b.ctr?a:b}); if(lc.ctr<m.ctr)parts.push({t:'点击率最低的是 <b>'+esc(lc.channel)+'</b>，只有 '+pct(lc.ctr)+'，全渠道是 '+pct(m.ctr)+'——看到的人多、点的人少，问题多半在封面和标题。',w:'人买东西要过两道关：先点进来，再决定买不买。点击率管第一道关，靠的是封面和标题勾不勾人。这一关最低，说明坏在第一步，还没轮到价格说话。'}); }
 var withCvr=elig.filter(function(c){return c.cvr!=null});
-if(withCvr.length&&m.cvr!=null){ var lv=withCvr.reduce(function(a,b){return a.cvr<b.cvr?a:b}); if(lv.cvr<m.cvr)parts.push('转化率最低的是 <b>'+esc(lv.channel)+'</b>，只有 '+pct(lv.cvr)+'，全渠道是 '+pct(m.cvr)+'——人点进来了却没成交，问题多半在点进去之后的价格、评价和讲法。'); }
-if(parts.length)html+='<div style="margin:8px 0">'+parts.map(function(x){return '<p style="margin:5px 0">'+x+'</p>'}).join("")+'</div>';
+if(withCvr.length&&m.cvr!=null){ var lv=withCvr.reduce(function(a,b){return a.cvr<b.cvr?a:b}); if(lv.cvr<m.cvr)parts.push({t:'转化率最低的是 <b>'+esc(lv.channel)+'</b>，只有 '+pct(lv.cvr)+'，全渠道是 '+pct(m.cvr)+'——人点进来了却没成交，问题多半在点进去之后的价格、评价和讲法。',w:'转化率管第二道关：人已经点进来了，买不买由价格、评价和商品讲法决定。这一关最低，问题不在流量，在点进去之后看到的东西。'}); }
+if(parts.length)html+='<div style="margin:8px 0">'+parts.map(function(x){return '<p style="margin:5px 0 1px">'+x.t+'</p>'+(x.w?'<p style="margin:0 0 7px;font-size:13.5px;color:#5b7268">为什么这么判：'+x.w+'</p>':"")}).join("")+'</div>';
 if(S.perChan.length){
- html+='<div style="margin-top:10px"><b>每个渠道一句话：</b>'+S.perChan.map(function(c){
+ html+='<div style="margin-top:10px"><b>每个渠道一句话：</b><p style="margin:2px 0 4px;font-size:13.5px;color:#5b7268">每个渠道只看三件事：换一个客户多少钱（获客成本）、看到的人里多少人点（点击率）、点了的人里多少人买（转化率）。三件事都正常，这个渠道就正常。</p>'+S.perChan.map(function(c){
    var sh=shareBy[c.channel];
    var tag;
    if(c.small)tag='数据太少，先观察';
