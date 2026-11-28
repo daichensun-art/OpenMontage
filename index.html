@@ -299,6 +299,8 @@ var S={
 };
 var seq=1;
 function log(action,target,result){S.logs.push({time:nowStr(),action:action,target:target||"",before:"",after:result||""})}
+/* 换文件 / 全部清空时共用的复位：只留界限数（阈值），算过的结果、挑错、建议、操作记录全部清掉，否则新文件会背着旧文件的数字和记录继续算。clearLogs=1 时连操作记录也清——换文件、清空都算一次新的分析，报告里的操作记录只记这一次的步骤。 */
+function resetForNewData(clearLogs){S.sources=[];S.manualRows=[];S.problems=[];S.records=[];S.decisions={};S.edits={};S.metrics=null;S.perChan=[];S.suggestions=[];S.step=1;S.unlocked=1;if(clearLogs)S.logs=[]}
 function nextId(){return seq++}
 
 /* ============ 列名识别 ============ */
@@ -492,7 +494,7 @@ function afterUpload(){
 function askMerge(files){
  S.pendingFiles=files;
  showModal('<h3>你已经有一份数据在分析了</h3><p>新传的这份，你想怎么处理？不选清楚，程序不会把两份悄悄搅在一起算。</p><div class="btnrow" style="flex-direction:column;align-items:stretch"><button class="btn primary" id="mReplace">换成这份（只分析这份）</button><button class="btn" id="mTogether">跟前面的一起算（当作不同渠道）</button><button class="btn" id="mCancel">先不传了</button></div>');
- $("#mReplace").addEventListener("click",function(){hideModal(); S.sources=[]; S.unlocked=1; log("换成新传的文件","", "清掉前面的，只分析这份"); var f=S.pendingFiles; S.pendingFiles=null; readFiles(f);});
+ $("#mReplace").addEventListener("click",function(){hideModal(); resetForNewData(1); log("换成新传的文件","", "清掉前面的，只分析这份"); var f=S.pendingFiles; S.pendingFiles=null; readFiles(f);});
  $("#mTogether").addEventListener("click",function(){hideModal(); log("跟前面的一起算","","当作不同渠道合并"); var f=S.pendingFiles; S.pendingFiles=null; readFiles(f);});
  $("#mCancel").addEventListener("click",function(){hideModal(); S.pendingFiles=null;});
 }
@@ -525,7 +527,7 @@ function bind1(){
    $("#cfCancel").addEventListener("click",hideModal);
  })});
  $$("[data-restore]").forEach(function(b){b.addEventListener("click",function(){var s=S.sources.filter(function(x){return x.id==b.getAttribute("data-restore")})[0]; if(s){s.skipped=false; s.skipReason=""; log("重新用这个表",s.file+" / "+s.sheet,"拿回来用了"); unlock(2); render();}})});
- var ca=$("#clearAll"); if(ca)ca.addEventListener("click",function(){S.sources=[];S.manualRows=[];S.unlocked=1;S.problems=[];S.records=[];S.suggestions=[];log("全部清空，重新来","","");render()});
+ var ca=$("#clearAll"); if(ca)ca.addEventListener("click",function(){resetForNewData(1);log("全部清空，重新来","","");render()});
  $("#tplBtn").addEventListener("click",downloadTemplate);
  $("#toggleManual").addEventListener("click",function(){$("#manualBox").classList.toggle("hidden")});
  $("#mAdd").addEventListener("click",function(){
@@ -550,7 +552,7 @@ function bind1(){
      S.manualRows=[]; log("在这里填数字","共 "+rows.length+" 行","变成正式数据源"); unlock(2); render(); toast("好了，这些数字已经变成数据源，去核对列名吧。");
    };
    if(activeSources().length){ showModal('<h3>你已经有一份数据在分析了</h3><p>填的这些数字，是换掉前面的，还是跟前面的一起算？</p><div class="btnrow"><button class="btn primary" id="mmR">换成这些</button><button class="btn" id="mmT">一起算</button></div>');
-     $("#mmR").addEventListener("click",function(){hideModal();S.sources=[];doAdd()}); $("#mmT").addEventListener("click",function(){hideModal();doAdd()});
+     $("#mmR").addEventListener("click",function(){hideModal();resetForNewData(1);log("换成在这里填的数字","","清掉前面的，只分析这些数");doAdd()}); $("#mmT").addEventListener("click",function(){hideModal();doAdd()});
    } else doAdd();
  });
  var t2=$("#toStep2"); if(t2)t2.addEventListener("click",function(){goStep(2)});
@@ -581,7 +583,7 @@ function sampleRows(){
  return out;
 }
 function loadSample(clearActive){
- if(clearActive){S.sources=S.sources.filter(function(s){return s.skipped}); S.problems=[]; S.records=[]; S.suggestions=[]; S.decisions={}; S.unlocked=1;}
+ if(clearActive){var keepSkipped=S.sources.filter(function(s){return s.skipped}); resetForNewData(1); S.sources=keepSkipped;}
  var rows=sampleRows();
  var grid=[SAMPLE_HEADERS].concat(rows); var found=findHeaderRow(grid); var map=guessByShape(grid,0,found.mapping,SAMPLE_HEADERS);
  S.sources.push({id:nextId(),file:"示例数据（虚构）",sheet:"营销数据",channel:"示例数据（虚构）",headers:SAMPLE_HEADERS.slice(),rows:rows,headerRow:0,mapping:map,skipped:false,skipReason:""});
@@ -901,10 +903,62 @@ function groupedRulesHTML(){
    return '<div class="tierhead"><span class="tn">第'+(i+1)+'档</span><b>'+t+'</b><span>'+descs[t]+' · '+list.length+' 条</span></div>'+list.map(suggCard).join("");
  }).join("");
 }
+function localAnalysisHTML(){
+if(!S.metrics)computeMetrics();
+var m=S.metrics; if(!m||!m.cost)return "";
+var T=S.thresholds||{}; var pp=(isFinite(T.divergePP)&&T.divergePP>0)?T.divergePP:10;
+var rows=shareRows(); var shareBy={}; rows.forEach(function(r){shareBy[r.channel]=r});
+var elig=S.perChan.filter(function(c){return !c.small});
+var withCac=elig.filter(function(c){return c.cac!=null});
+var parts=[];
+var concl=conclusionText();
+var html='<div style="border:2px solid #0d5c50;border-radius:14px;padding:16px 18px;margin:14px 0;background:#f4faf8">'
++'<h3 style="margin:0 0 8px">工具自己的分析（不用问 AI，打开就有）</h3>'
++(concl?'<p style="font-size:16.5px;margin:6px 0"><b>一句话：</b>'+esc(concl)+'</p>':"");
+if(withCac.length>=2&&m.cac!=null){
+ var worst=withCac.reduce(function(a,b){return a.cac>b.cac?a:b});
+ var best=withCac.reduce(function(a,b){return a.cac<b.cac?a:b});
+ if(worst.channel!==best.channel)parts.push('拉一个客户最贵的是 <b>'+esc(worst.channel)+'</b>，要 '+fmtMoney(worst.cac)+'，是全渠道 '+fmtMoney(m.cac)+' 的 '+(worst.cac/m.cac).toFixed(2)+' 倍；最便宜的是 <b>'+esc(best.channel)+'</b>，只要 '+fmtMoney(best.cac)+'。同样拉一个客户，两个渠道的价钱差了 '+(worst.cac/best.cac).toFixed(1)+' 倍。');
+}
+if(m.cac!=null){
+ var extra=0, extraNames=[];
+ withCac.forEach(function(c){ if(c.cac>m.cac){ var e=c.cost-c.conv*m.cac; if(e>0){extra+=e; extraNames.push(c.channel);} } });
+ if(extra>0)parts.push('按全渠道平均的获客成本折算，'+extraNames.map(function(n){return esc(n)}).join('、')+' 一共多花了约 <b>'+fmtMoney(extra)+'</b>。这是拿平均数折算的估算，帮你看先处理谁最值，不是省钱承诺。');
+}
+var div=rows.filter(function(r){return r.divergent});
+if(div.length){ div.forEach(function(r){ parts.push('<b>'+esc(r.channel)+'</b> 的钱和效果对不上：占了全部花费的 '+r.costShare.toFixed(1)+'%，只换来全部转化的 '+r.convShare.toFixed(1)+'%，差了 '+r.gap.toFixed(1)+' 个百分点。'); }); }
+else if(rows.length)parts.push('各渠道的花费占比和转化占比大体对得上，没有哪个渠道明显花得多、换得少。');
+var withCtr=elig.filter(function(c){return c.ctr!=null});
+if(withCtr.length&&m.ctr!=null){ var lc=withCtr.reduce(function(a,b){return a.ctr<b.ctr?a:b}); if(lc.ctr<m.ctr)parts.push('点击率最低的是 <b>'+esc(lc.channel)+'</b>，只有 '+pct(lc.ctr)+'，全渠道是 '+pct(m.ctr)+'——看到的人多、点的人少，问题多半在封面和标题。'); }
+var withCvr=elig.filter(function(c){return c.cvr!=null});
+if(withCvr.length&&m.cvr!=null){ var lv=withCvr.reduce(function(a,b){return a.cvr<b.cvr?a:b}); if(lv.cvr<m.cvr)parts.push('转化率最低的是 <b>'+esc(lv.channel)+'</b>，只有 '+pct(lv.cvr)+'，全渠道是 '+pct(m.cvr)+'——人点进来了却没成交，问题多半在点进去之后的价格、评价和讲法。'); }
+if(parts.length)html+='<div style="margin:8px 0">'+parts.map(function(x){return '<p style="margin:5px 0">'+x+'</p>'}).join("")+'</div>';
+if(S.perChan.length){
+ html+='<div style="margin-top:10px"><b>每个渠道一句话：</b>'+S.perChan.map(function(c){
+   var sh=shareBy[c.channel];
+   var tag;
+   if(c.small)tag='数据太少，先观察';
+   else if(sh&&sh.gap>=pp)tag='钱和效果对不上，先处理';
+   else if(c.cac!=null&&m.cac!=null&&c.cac>=m.cac*1.5)tag='获客太贵，先止损';
+   else if(c.cac!=null&&m.cac!=null&&c.cac<=m.cac*0.7)tag='效率不错，可以多给点预算试试';
+   else tag='大体正常';
+   return '<p style="margin:4px 0">· <b>'+esc(c.channel)+'</b>：获客成本 '+(c.cac==null?'—':fmtMoney(c.cac))+'，点击率 '+pct(c.ctr)+'，转化率 '+pct(c.cvr)+(sh?'，占花费 '+sh.costShare.toFixed(1)+'%、占转化 '+sh.convShare.toFixed(1)+'%':'')+' —— '+tag+'。</p>';
+ }).join("")+'</div>';
+}
+var firstStop=S.suggestions.filter(function(s){return s.source==="规则"&&suggTier(s)==="先止损"})[0];
+var firstDo;
+if(firstStop)firstDo='先处理 <b>'+esc(firstStop.channel)+'</b>：'+esc(firstStop.title)+'（下面第一档就是这条，点「采纳」就能进报告）。';
+else if(div.length)firstDo='先核对 <b>'+esc(div[0].channel)+'</b> 的预算分配，它是这次最对不上账的渠道。';
+else if(withCac.length>=2){var b2=withCac.reduce(function(a,b){return a.cac<b.cac?a:b}); firstDo='这次没有明显的漏钱口，先小步把一点预算往获客最便宜的 <b>'+esc(b2.channel)+'</b>（'+fmtMoney(b2.cac)+' / 个）挪，观察一周再看。';}
+else firstDo='先保持现在的投放，攒下一期数据再比。';
+html+='<p style="margin:10px 0 2px;font-size:16px"><b>先做这一件事：</b>'+firstDo+'</p>';
+html+='<p class="hint" style="margin-top:8px">这段分析是程序拿这次算出的数字、按固定规矩当场写的，每个数都能在第 4 步和下面的依据里对上；不是 AI 编的。AI 补充在页面下面，可用可不用。</p></div>';
+return html;
+}
 function step5HTML(){
 var T=S.thresholds||{};
 T={wasteMult:(isFinite(T.wasteMult)&&T.wasteMult>0)?T.wasteMult:1.5,wasteShare:(isFinite(T.wasteShare)&&T.wasteShare>0)?T.wasteShare:15,lowCtrMult:(isFinite(T.lowCtrMult)&&T.lowCtrMult>0)?T.lowCtrMult:0.6,lowCvrMult:(isFinite(T.lowCvrMult)&&T.lowCvrMult>0)?T.lowCvrMult:0.6,divergePP:(isFinite(T.divergePP)&&T.divergePP>0)?T.divergePP:10};
-return '<h2>第 5 步 · 诊断与建议</h2>'+
+return '<h2>第 5 步 · 诊断与建议</h2>'+localAnalysisHTML()+
 '<h3 style="margin-top:6px">规则诊断（程序判定，非 AI）</h3>'+
 '<p>下面四条是程序按死规矩判的：获客成本贵得离谱、花费占比和转化占比对不上、点的人太少、点了却不买。触发了就给出建议，每条都带着触发它的真实数字。建议已经按「先止损 → 再优化 → 可尝试」排好序：先堵住正在漏钱的，再补链路短板，AI 补充的想法统一放在「可尝试」，小步验证。规矩的松紧（界限数）你可以调，调完点「按新界限重新诊断」。</p>'+
 '<p class="hint">这五个界限数已经按常用的松紧填好了，不懂就别动它，直接往下走就行。比例按百分比填：60% 的意思是，低到只有全渠道的六成，就算太少。</p>'+
@@ -912,8 +966,8 @@ return '<h2>第 5 步 · 诊断与建议</h2>'+
 '<div class="btnrow"><button class="btn" id="rerunRules">按新界限重新诊断</button></div>'+
 '<div id="ruleList">'+groupedRulesHTML()+'</div>'+
 (S.suggestions.some(function(s){return s.source==="规则"})?"":'<div class="msg good">按现在的界限，四条规则一条都没触发：没有哪个渠道明显在烧钱，钱和效果也对得上。</div>')+
-'<h3>让 AI 再补充建议（公开版：提示词协作）</h3>'+
-'<p>程序已经把核对过的数字拼成了一段「给 AI 的话」。你复制它，去任意一个 AI 聊天工具里粘贴发送，再把 AI 的回答整段贴回来。程序会逐条核对：依据里的数字在数据里找不到的标红，AI 自己冒出来的新数字标黄，依据空着的判不合格。</p>'+
+'<h3>让 AI 再补充建议（可选，不用 AI 也能出报告）</h3>'+
+'<p>这一步可选：上面工具自己的分析和规则建议已经够出报告了。想要更多点子，再把这段程序拼好的「给 AI 的话」复制到任意一个 AI 聊天工具里，把回答整段贴回来。程序会逐条核对：依据里的数字在数据里找不到的标红，AI 自己冒出来的新数字标黄，依据空着的判不合格。</p>'+
 '<label class="fl">给 AI 的话（点按钮一键复制）</label><textarea id="aiPrompt" readonly>'+esc(aiPromptText())+'</textarea>'+
 '<div class="btnrow"><button class="btn primary" id="copyPrompt">复制这段话</button></div>'+
 '<label class="fl">把 AI 的回答贴到这里</label><textarea id="aiReply" placeholder="把 AI 回答的整段内容粘贴到这里"></textarea>'+
