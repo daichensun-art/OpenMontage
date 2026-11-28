@@ -709,6 +709,7 @@ function step3HTML(){
  return '<h2>第 3 步 · 挑错</h2>'+
  '<p>程序先把账捋干净再算：缺数的、重复的、是负数的、点击比曝光还多的行，混在里面算出来就是假账。下面每一行有问题的数据，你可以选「不要这行」「留着」或「自己改」，默认是不要这行。</p>'+
  '<div class="bignums"><div class="bignum"><div class="k">一共传了</div><div class="v">'+S.records.length+' 行</div></div><div class="bignum"><div class="k">查出的问题</div><div class="v">'+probs.length+' 个</div></div><div class="bignum"><div class="k">要丢掉</div><div class="v">'+outCount+' 行</div></div><div class="bignum hero-num"><div class="k">剩下用来算数</div><div class="v">'+(S.records.length-outCount)+' 行</div></div></div>'+
+ (probs.length&&Object.keys(badIds).length<probs.length?'<p class="hint">说明：查出的问题有 '+probs.length+' 个，分布在 '+Object.keys(badIds).length+' 行里——一行可以有不止一个问题，所以问题数比行数多是正常的。</p>':"")+
  (probs.length?'<div style="overflow-x:auto"><table><thead><tr><th>渠道</th><th>日期</th><th>问题在哪</th><th>怎么办</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div>':'<div class="msg good">一遍查下来，没发现问题，数据挺干净。</div>')+
  '<div class="btnrow"><button class="btn" onclick="goStep(2)">← 回第 2 步</button><button class="btn primary" id="toStep4">挑完了，看结果 →</button></div>';
 }
@@ -838,27 +839,28 @@ if(!S.metrics)computeMetrics();
 var TD=S.thresholds||{};
 S.thresholds={wasteMult:(isFinite(TD.wasteMult)&&TD.wasteMult>0)?TD.wasteMult:1.5,wasteShare:(isFinite(TD.wasteShare)&&TD.wasteShare>0)?TD.wasteShare:15,lowCtrMult:(isFinite(TD.lowCtrMult)&&TD.lowCtrMult>0)?TD.lowCtrMult:0.6,lowCvrMult:(isFinite(TD.lowCvrMult)&&TD.lowCvrMult>0)?TD.lowCvrMult:0.6,divergePP:(isFinite(TD.divergePP)&&TD.divergePP>0)?TD.divergePP:10};
 var m=S.metrics, T=S.thresholds;
+S.ruleHits={waste:false,diverge:false,ctr:false,cvr:false};
 S.suggestions=S.suggestions.filter(function(s){return s.source!=="规则"});
 S.perChan.forEach(function(c){
 if(c.small)return;
 if(c.cac!=null&&m.cac!=null&&c.cac>m.cac*T.wasteMult&&m.cost&&c.cost/m.cost*100>T.wasteShare){
-pushSugg("规则",c.channel,"像是白花钱：先缩减这个渠道的预算",
+S.ruleHits.waste=true;pushSugg("规则",c.channel,"像是白花钱：先缩减这个渠道的预算",
 c.channel+" 拉一个客户要 "+fmtMoney(c.cac)+"，是全渠道 "+fmtMoney(m.cac)+" 的 "+(c.cac/m.cac).toFixed(2)+" 倍；它还占了全部花费的 "+(c.cost/m.cost*100).toFixed(1)+"%（"+fmtMoney(c.cost)+" / "+fmtMoney(m.cost)+"）。建议：先把这个渠道的预算降下来，把钱挪给获客成本低的渠道，观察一周再决定要不要停。",
 "获客成本 "+fmtMoney(c.cac)+"，超过全渠道 "+fmtMoney(m.cac)+" 的 "+T.wasteMult+" 倍；花费占比 "+(c.cost/m.cost*100).toFixed(1)+"%＞"+T.wasteShare+"%",null,"先止损");
 }
 if(m.cost&&m.conv){var cs=c.cost/m.cost*100, vs=c.conv/m.conv*100;
 if(cs-vs>=T.divergePP){
-pushSugg("规则",c.channel,"钱和效果对不上：先核对这个渠道的预算",
+S.ruleHits.diverge=true;pushSugg("规则",c.channel,"钱和效果对不上：先核对这个渠道的预算",
 c.channel+" 吃掉了全部花费的 "+cs.toFixed(1)+"%（"+fmtMoney(c.cost)+"），只换来全部转化的 "+vs.toFixed(1)+"%（"+fmt(c.conv)+" 个），两个占比差了 "+(cs-vs).toFixed(1)+" 个百分点。单看单价不一定最贵，但它占的预算和它出的效果对不上。建议：先核对这个渠道的预算分配，把占比往出效果的渠道匀一匀，再观察一周的转化占比有没有跟上。",
 "花费占比 "+cs.toFixed(1)+"%，转化占比 "+vs.toFixed(1)+"%，高出 "+(cs-vs).toFixed(1)+" 个百分点（界限 "+T.divergePP+" 个百分点）",null,"先止损");
 }}
 if(c.ctr!=null&&m.ctr!=null&&c.ctr<m.ctr*T.lowCtrMult){
-pushSugg("规则",c.channel,"点的人太少：先改封面和标题",
+S.ruleHits.ctr=true;pushSugg("规则",c.channel,"点的人太少：先改封面和标题",
 c.channel+" 的点击率只有 "+pct(c.ctr)+"，全渠道是 "+pct(m.ctr)+"。看到的人不少、点的人太少，多半是封面和标题不勾人。建议：先换封面和标题再投，别急着加钱。",
 "点击率 "+pct(c.ctr)+"，低于全渠道 "+pct(m.ctr)+" 的 "+Math.round(T.lowCtrMult*100)+"%",null,"再优化");
 }
 if(c.ctr!=null&&m.ctr!=null&&c.ctr>=m.ctr&&c.cvr!=null&&m.cvr!=null&&c.cvr<m.cvr*T.lowCvrMult){
-pushSugg("规则",c.channel,"点了却不买：先改落地页和商品讲法",
+S.ruleHits.cvr=true;pushSugg("规则",c.channel,"点了却不买：先改落地页和商品讲法",
 c.channel+" 的点击率 "+pct(c.ctr)+" 不差，但转化率只有 "+pct(c.cvr)+"，全渠道是 "+pct(m.cvr)+"。人点进来了却没买，问题多半在点进去之后：价格、评价、商品讲法。建议：先改详情和开场讲法，再看转化。",
 "点击率 "+pct(c.ctr)+"≥全渠道 "+pct(m.ctr)+"；转化率 "+pct(c.cvr)+"，低于全渠道 "+pct(m.cvr)+" 的 "+Math.round(T.lowCvrMult*100)+"%",null,"再优化");
 }
@@ -903,7 +905,7 @@ function groupedRulesHTML(){
    return '<div class="tierhead"><span class="tn">第'+(i+1)+'档</span><b>'+t+'</b><span>'+descs[t]+' · '+list.length+' 条</span></div>'+list.map(suggCard).join("");
  }).join("");
 }
-function localAnalysisHTML(){
+function localAnalysisHTML(forReport){
 if(!S.metrics)computeMetrics();
 var m=S.metrics; if(!m||!m.cost)return "";
 var T=S.thresholds||{}; var pp=(isFinite(T.divergePP)&&T.divergePP>0)?T.divergePP:10;
@@ -947,25 +949,38 @@ if(S.perChan.length){
  }).join("")+'</div>';
 }
 var firstStop=S.suggestions.filter(function(s){return s.source==="规则"&&suggTier(s)==="先止损"})[0];
-var firstDo;
-if(firstStop)firstDo='先处理 <b>'+esc(firstStop.channel)+'</b>：'+esc(firstStop.title)+'（下面第一档就是这条，点「采纳」就能进报告）。';
-else if(div.length)firstDo='先核对 <b>'+esc(div[0].channel)+'</b> 的预算分配，它是这次最对不上账的渠道。';
-else if(withCac.length>=2){var b2=withCac.reduce(function(a,b){return a.cac<b.cac?a:b}); firstDo='这次没有明显的漏钱口，先小步把一点预算往获客最便宜的 <b>'+esc(b2.channel)+'</b>（'+fmtMoney(b2.cac)+' / 个）挪，观察一周再看。';}
-else firstDo='先保持现在的投放，攒下一期数据再比。';
-html+='<p style="margin:10px 0 2px;font-size:16px"><b>先做这一件事：</b>'+firstDo+'</p>';
-html+='<p class="hint" style="margin-top:8px">这段分析是程序拿这次算出的数字、按固定规矩当场写的，每个数都能在第 4 步和下面的依据里对上；不是 AI 编的。AI 补充在页面下面，可用可不用。</p></div>';
+var firstDo; var firstWhy='';
+if(firstStop){firstDo='先处理 <b>'+esc(firstStop.channel)+'</b>：'+esc(firstStop.title)+(forReport?'。':'（下面第一档就是这条，点「采纳」就能进报告）。'); firstWhy='它正在持续烧钱，越晚处理，多花的越多；其他问题不直接花钱，可以排在后面。';}
+else if(div.length){firstDo='先核对 <b>'+esc(div[0].channel)+'</b> 的预算分配，它是这次最对不上账的渠道。'; firstWhy='钱的分配错位是其他问题的源头，先把账对上，再看单价和链路才有意义。';}
+else if(withCac.length>=2){var b2=withCac.reduce(function(a,b){return a.cac<b.cac?a:b}); firstDo='这次没有明显的漏钱口，先小步把一点预算往获客最便宜的 <b>'+esc(b2.channel)+'</b>（'+fmtMoney(b2.cac)+' / 个）挪，观察一周再看。'; firstWhy='没有正在漏钱的地方时，把钱小步往效率最高的地方挪，风险最小、看效果最快。';}
+else{firstDo='先保持现在的投放，攒下一期数据再比。'; firstWhy='数据没给出明确的坏信号时，乱动反而会把本来好的结构打乱，先攒数据更稳。';}
+html+='<p style="margin:10px 0 2px;font-size:16px"><b>先做这一件事：</b>'+firstDo+'</p>'+(firstWhy?'<p style="margin:0 0 2px;font-size:13.5px;color:#5b7268">为什么先做这件：'+firstWhy+'</p>':'');
+html+='<p class="hint" style="margin-top:8px">这段分析是程序拿这次算出的数字、按固定规矩当场写的，每个数都能在第 4 步和下面的依据里对上；不是 AI 编的。'+(forReport?'这段和第 5 步页面里的分析是同一段、同一份数据生成的，两处永远一致。':'AI 补充在页面下面，可用可不用。')+'</p></div>';
 return html;
+}
+function untrigRulesHTML(){
+ var H=S.ruleHits; if(!H)return "";
+ var T=S.thresholds||{};
+ var mult=(isFinite(T.wasteMult)&&T.wasteMult>0)?T.wasteMult:1.5, share=(isFinite(T.wasteShare)&&T.wasteShare>0)?T.wasteShare:15, pp=(isFinite(T.divergePP)&&T.divergePP>0)?T.divergePP:10, cm=Math.round(((isFinite(T.lowCtrMult)&&T.lowCtrMult>0)?T.lowCtrMult:0.6)*100), vm=Math.round(((isFinite(T.lowCvrMult)&&T.lowCvrMult>0)?T.lowCvrMult:0.6)*100);
+ var miss=[];
+ if(!H.waste)miss.push('「像是白花钱」：没有任何一个渠道同时达到「获客成本超过全渠道 '+mult+' 倍」和「花费占比超过 '+share+'%」这两条线');
+ if(!H.diverge)miss.push('「钱和效果对不上」：没有任何渠道的花费占比高出转化占比 '+pp+' 个百分点以上');
+ if(!H.ctr)miss.push('「点的人太少」：没有任何渠道的点击率低到全渠道的 '+cm+'% 以下');
+ if(!H.cvr)miss.push('「点了却不买」：没有任何渠道在点击率不差的情况下，转化率低到全渠道的 '+vm+'% 以下');
+ if(!miss.length)return "";
+ var small=S.perChan.some(function(c){return c.small});
+ return '<div class="msg" style="background:#f4f7f5">这次没触发的规矩，逐条说清为什么：<br>'+miss.join('<br>')+(small?'<br>（数据太少的渠道不参与判定，免得几行数据就下结论。）':"")+'</div>';
 }
 function step5HTML(){
 var T=S.thresholds||{};
 T={wasteMult:(isFinite(T.wasteMult)&&T.wasteMult>0)?T.wasteMult:1.5,wasteShare:(isFinite(T.wasteShare)&&T.wasteShare>0)?T.wasteShare:15,lowCtrMult:(isFinite(T.lowCtrMult)&&T.lowCtrMult>0)?T.lowCtrMult:0.6,lowCvrMult:(isFinite(T.lowCvrMult)&&T.lowCvrMult>0)?T.lowCvrMult:0.6,divergePP:(isFinite(T.divergePP)&&T.divergePP>0)?T.divergePP:10};
 return '<h2>第 5 步 · 诊断与建议</h2>'+localAnalysisHTML()+
 '<h3 style="margin-top:6px">规则诊断（程序判定，非 AI）</h3>'+
-'<p>下面四条是程序按死规矩判的：获客成本贵得离谱、花费占比和转化占比对不上、点的人太少、点了却不买。触发了就给出建议，每条都带着触发它的真实数字。建议已经按「先止损 → 再优化 → 可尝试」排好序：先堵住正在漏钱的，再补链路短板，AI 补充的想法统一放在「可尝试」，小步验证。规矩的松紧（界限数）你可以调，调完点「按新界限重新诊断」。</p>'+
+'<p>下面四条是程序按死规矩判的：获客成本贵得离谱、花费占比和转化占比对不上、点的人太少、点了却不买。四条规矩对应下面五个界限数，「像是白花钱」一条就用两个（倍数和花费占比）。触发了就给出建议，每条都带着触发它的真实数字。建议已经按「先止损 → 再优化 → 可尝试」排好序：先堵住正在漏钱的，再补链路短板，AI 补充的想法统一放在「可尝试」，小步验证。规矩的松紧（界限数）你可以调，调完点「按新界限重新诊断」。</p>'+
 '<p class="hint">这五个界限数已经按常用的松紧填好了，不懂就别动它，直接往下走就行。比例按百分比填：60% 的意思是，低到只有全渠道的六成，就算太少。</p>'+
 '<div class="grid3"><div><label class="fl">像是白花钱：获客成本超过全渠道的倍数（倍）</label><div style="display:flex;align-items:center;gap:8px"><input type="number" step="0.1" min="0" id="t_waste" value="'+T.wasteMult+'"><span style="font-weight:700;color:var(--muted)">倍</span></div></div><div><label class="fl">像是白花钱：花费占比至少（%）</label><div style="display:flex;align-items:center;gap:8px"><input type="number" step="1" min="0" max="100" id="t_share" value="'+T.wasteShare+'"><span style="font-weight:700;color:var(--muted)">%</span></div></div><div><label class="fl">钱和效果对不上：花费占比高出转化占比至少（个百分点）</label><div style="display:flex;align-items:center;gap:8px"><input type="number" step="1" min="1" max="100" id="t_div" value="'+T.divergePP+'"><span style="font-weight:700;color:var(--muted)">个百分点</span></div></div><div><label class="fl">点的人太少：点击率低于全渠道的比例（%）</label><div style="display:flex;align-items:center;gap:8px"><input type="number" step="1" min="1" max="100" id="t_ctr" value="'+Math.round(T.lowCtrMult*100)+'"><span style="font-weight:700;color:var(--muted)">%</span></div></div><div><label class="fl">点了却不买：转化率低于全渠道的比例（%）</label><div style="display:flex;align-items:center;gap:8px"><input type="number" step="1" min="1" max="100" id="t_cvr" value="'+Math.round(T.lowCvrMult*100)+'"><span style="font-weight:700;color:var(--muted)">%</span></div></div></div>'+
 '<div class="btnrow"><button class="btn" id="rerunRules">按新界限重新诊断</button></div>'+
-'<div id="ruleList">'+groupedRulesHTML()+'</div>'+
+'<div id="ruleList">'+groupedRulesHTML()+'</div>'+untrigRulesHTML()+
 (S.suggestions.some(function(s){return s.source==="规则"})?"":'<div class="msg good">按现在的界限，四条规则一条都没触发：没有哪个渠道明显在烧钱，钱和效果也对得上。</div>')+
 '<h3>让 AI 再补充建议（可选，不用 AI 也能出报告）</h3>'+
 '<p>这一步可选：上面工具自己的分析和规则建议已经够出报告了。想要更多点子，再把这段程序拼好的「给 AI 的话」复制到任意一个 AI 聊天工具里，把回答整段贴回来。程序会逐条核对：依据里的数字在数据里找不到的标红，AI 自己冒出来的新数字标黄，依据空着的判不合格。</p>'+
@@ -1115,12 +1130,13 @@ conclHtml+
 '<h3>二、算出的数</h3><p>总曝光 '+fmt(m.imp)+'，总点击 '+fmt(m.click)+'，总花费 '+fmtMoney(m.cost)+'，总转化 '+fmt(m.conv)+'，<b>全渠道获客成本 '+(m.cac==null?"—":fmtMoney(m.cac))+'</b>（公式：花费 ÷ 转化，分子分母分别加总再相除）。</p>'+
 (urg?'<div style="font-size:13px;color:#8a9a94;margin:2px 0 10px">出处：四个总数都是把原表 '+urg+' 里留下来的行逐行加出来的；获客成本＝总花费 ÷ 总转化。</div>':"")+
 '<table style="width:100%;border-collapse:collapse" border="1" cellspacing="0" cellpadding="8"><thead><tr><th>渠道</th><th>曝光</th><th>点击</th><th>点击率</th><th>转化</th><th>转化率</th><th>花费</th><th>获客成本</th></tr></thead><tbody>'+chanRows+'</tbody></table>'+
-(urg?'<div style="font-size:13px;color:#8a9a94;margin:2px 0 10px">出处：表中每个渠道一行，只加总这个渠道在原表 '+urg+' 里的行；每个渠道在原表里的具体行号，见第五部分各条建议下面的出处。</div>':"")+
+(urg?'<div style="font-size:13px;color:#8a9a94;margin:2px 0 10px">出处：表中每个渠道一行，只加总这个渠道在原表 '+urg+' 里的行；每个渠道在原表里的具体行号，见第六部分各条建议下面的出处。</div>':"")+
 '<h3>三、花费与效果对账</h3>'+divergenceReportHTML()+
-'<h3>四、渠道对比图</h3>'+barChart()+
-'<h3>五、确认过的建议（按先止损 / 再优化 / 可尝试排序）</h3>'+suggHtml+
-'<h3>六、操作记录</h3><table style="width:100%;border-collapse:collapse" border="1" cellspacing="0" cellpadding="8"><thead><tr><th>时间</th><th>做了什么</th><th>对什么</th><th>结果</th></tr></thead><tbody>'+logRows+'</tbody></table>'+
-'<h3>七、转发小结（微信版）</h3><p style="color:#5c6f6c">下面这段可以直接复制发到微信，里面的数字都来自上面已确认的结果，建议只列你点头采纳的。</p><div style="border:1px solid #dde5e1;border-radius:12px;padding:14px 18px;margin:10px 0;white-space:pre-wrap">'+esc(wechatSummaryText())+'</div>'+
+'<h3>四、工具自己的分析</h3>'+localAnalysisHTML(true)+
+'<h3>五、渠道对比图</h3>'+barChart()+
+'<h3>六、确认过的建议（按先止损 / 再优化 / 可尝试排序）</h3>'+suggHtml+
+'<h3>七、操作记录</h3><table style="width:100%;border-collapse:collapse" border="1" cellspacing="0" cellpadding="8"><thead><tr><th>时间</th><th>做了什么</th><th>对什么</th><th>结果</th></tr></thead><tbody>'+logRows+'</tbody></table>'+
+'<h3>八、转发小结（微信版）</h3><p style="color:#5c6f6c">下面这段可以直接复制发到微信，里面的数字都来自上面已确认的结果，建议只列你点头采纳的。</p><div style="border:1px solid #dde5e1;border-radius:12px;padding:14px 18px;margin:10px 0;white-space:pre-wrap">'+esc(wechatSummaryText())+'</div>'+
 '<p style="color:#5c6f6c">说明：如使用了示例数据，示例数据为虚构，仅供演示，不代表任何真实商家。</p>'+
 '<div style="margin-top:30px;padding-top:16px;border-top:1px solid #dde5e1;text-align:right;color:#5c6f6c"><p style="margin:2px 0;font-size:16px;color:#1c2b2a"><b>程序计算 · 大模型解释 · 人工确认</b></p><p style="margin:2px 0">报告生成日期：'+reportDateStr()+'</p><p style="margin:2px 0">山东商务职业学院+赛道三+AI营销数据诊断与优化助手</p></div>';
 }
