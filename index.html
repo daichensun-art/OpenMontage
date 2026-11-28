@@ -815,6 +815,7 @@ function step4HTML(){
  }).join("");
  return '<h2>第 4 步 · 看结果</h2>'+
  credibilityHTML()+
+ ((m&&m.rows<10)?'<div class="msg warn">这次用来算数的数据只有 '+m.rows+' 行，样本小——下面的结论先当参考，攒到十行以上、更多天数再看会更准。</div>':"")+
  '<p>这些数全是程序按公式算的：每个比率都是先把分子、分母分别加总，再相除，不拿每天的比率求平均，那样会算歪。</p>'+
  '<div class="bignums"><div class="bignum"><div class="k">总曝光</div><div class="v">'+fmt(m.imp)+'</div></div><div class="bignum"><div class="k">总点击</div><div class="v">'+fmt(m.click)+'</div></div><div class="bignum"><div class="k">总花费</div><div class="v">'+fmtMoney(m.cost)+'</div></div><div class="bignum"><div class="k">总成交（转化）</div><div class="v">'+fmt(m.conv)+'</div></div><div class="bignum hero-num"><div class="k">全渠道获客成本</div><div class="v">'+(m.cac==null?"—":fmtMoney(m.cac))+'</div><div class="k">拉来一个客户，平均花这么多</div></div></div>'+
  '<div style="overflow-x:auto"><table><thead><tr><th>渠道</th><th class="num">曝光</th><th class="num">点击</th><th class="num">点击率</th><th class="num">转化</th><th class="num">转化率</th><th class="num">花费</th><th class="num">获客成本</th><th class="num">投入产出比</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
@@ -1124,6 +1125,8 @@ var logRows=S.logs.map(function(l){return '<tr><td>'+esc(l.time)+'</td><td>'+esc
 return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap"><div><h2>山东商务职业学院+赛道三+AI营销数据诊断与优化助手 · 营销数据诊断报告</h2><p style="color:#5c6f6c">生成时间：'+nowStr()+' · 程序算数，大模型解释，人点头才算数。</p></div>'+stampHtml+'</div>'+
 conclHtml+
 '<h3>一、数据概况</h3><p>一共传了 '+S.records.length+' 行，丢掉 '+dropped+' 行，用 '+(S.records.length-dropped)+' 行算数；确认进报告的建议 '+ad.length+' 条。</p>'+
+ (function(){var ds=cleanRecords().map(function(r){return r.date}).filter(function(d){return d&&d!=='—'}).sort(); return ds.length?'<p>数据期间：'+esc(ds[0])+' 至 '+esc(ds[ds.length-1])+'。</p>':""})()+
+ ((S.metrics&&S.metrics.rows<10)?'<p>提醒：这次用来算数的数据只有 '+S.metrics.rows+' 行，样本小，下面的结论仅供参考，攒到更多天数再看会更准。</p>':"")+
 (droppedRows.length?'<p>丢掉的是原表第 '+droppedRows.join("、")+' 行，每一行的问题在第 3 步的清单里按原表行号逐行写明。</p>':"")+
 '<p>数据可信度：<b>'+credibilityText()+'</b>。算法：可用行 ÷ 全部行，可用率 ≥90% 为高、≥70% 为中、低于 70% 为低，只按这张表本身计算，不与任何外部数字比较。</p>'+
 (urg?'<div style="font-size:13px;color:#8a9a94;margin:2px 0 10px">出处：全部行数是传进来的数据行数；可用行是第 3 步处理后留下、且曝光、点击、转化、花费四个数都齐的行，落在原表 '+urg+'。</div>':"")+
